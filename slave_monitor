@@ -1,0 +1,37 @@
+#!/bin/bash
+# get some slave stats
+#MYSQL_USER="test"
+#MYSQL_PASS="test"
+FILE=`ls -l /root/.my.cnf 2> /dev/null`
+if [ $? -eq 2 ]
+then
+read -p "Enter Host if Any (EX:- localhost,10.x.x.x): " host
+read -p "Enter MySQL Username (EX:- root, mike): " user
+mysql_config_editor set --login-path=/root/.my.cnf --host=$host --user=$user --password 2> /dev/null
+ if [ $? -eq 2 ]
+ then
+ echo "No Command Found 'mysql_config_editor'"
+ fi
+fi
+
+{
+echo "#!/bin/bash"
+echo ""
+echo 'Slave_IO_Running=`mysql --login-path=/root/.my.cnf -Bse "show slave status\G" | grep Slave_IO_Running | awk {print} |  cut -d ":" -f 2`'
+echo 'Slave_SQL_Running=`mysql --login-path=/root/.my.cnf -Bse "show slave status\G" | grep Slave_SQL_Running | head -1 |  cut -d ":" -f 2`'
+echo 'Last_error=`mysql --login-path=/root/.my.cnf -Bse "show slave status\G" | grep Last_SQL_Error |  head -1 | tr -s [:space:] | cut -d ":" -f 2`'
+echo ""
+echo 'if [ "$Slave_SQL_Running" == " No" ] || [ "$Slave_IO_Running" == " No" ];'
+echo 'then'
+echo '    echo "`date` "-" Last Error:" $Last_error >> /var/log/slave.log'
+echo '`mysql --login-path=/root/.my.cnf -Bse "stop slave"`'
+echo '`mysql --login-path=/root/.my.cnf -Bse "start slave"`'
+echo '    echo "`date` "-" Slave Error:" $Last_error >> /var/log/slave.log'
+echo 'fi'
+echo 'exit 0'
+} > /root/mysql_status
+
+`chmod 755 /root/mysql_status`
+crontab <<EOF
+0 * * * * /root/mysql_status
+EOF
